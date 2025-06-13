@@ -28,10 +28,10 @@ if (!dir.exists("qoi_outputs/plots")) dir.create("qoi_outputs/plots")
 # 1. Load Data & Model Fit --------------------------------------------------------------
 # ---------------------------------------------------------------------------------------
 
-stan_data <- readRDS("data/stan_data_fit_fast.rds")
-fit_full   <- readRDS("model_2_fit_fast/fit_full.rds")
+stan_data <- readRDS("data/stan_data_full.rds")
+fit_full   <- readRDS("model_2/fit_full.rds")
 
-# 1c. Define region and party labels (must match the wrangling script)
+# 1c. Define region and partq(y labels (must match the wrangling script)
 region_levels <- c(
   "Yorkshire & the Humber", "West Midlands", "Scotland", "Wales",
   "North West", "Eastern", "South West", "East Midlands", "London", "South East"
@@ -450,7 +450,13 @@ print(head(party_intercepts_df, 6))
 # 7g. Group-Level Effect Plots: Distributions (regions and parties, 3 traits) -------------
 # ---------------------------------------------------------------------------------------
 
-# 7g.i. Region-level distribution plots (half-eye; unchanged)
+latent_cols <- c(
+  phi   = "#1f78b4",  # blue
+  theta = "#33a02c",  # green
+  psi   = "#e31a1c"   # red
+)
+
+# 7g.i. Region-level distribution plots (half-eye)
 region_plot_dist <- ggplot(
   region_draws_long,
   aes(
@@ -461,16 +467,18 @@ region_plot_dist <- ggplot(
   )
 ) +
   stat_halfeye(
-    position   = position_nudge(y = 0.2),
+    position   = position_nudge(y = 0x.2),
     slab_alpha = 0.6,
     slab_size  = 0.5,
     adjust     = 0.8
   ) +
   facet_wrap(~ latent, scales = "free_x", ncol = 1) +
+  scale_fill_manual(name = "Latent", values = latent_cols) +
+  scale_colour_manual(name = "Latent", values = latent_cols) +
   theme_minimal() +
   labs(
-    title    = "Region-Level Intercepts: Posterior Distributions",
-    subtitle = "Latent traits: φ (Optimism), θ (Environment), ψ (Radical-Reform)",
+    title    = "Region-Level Intercepts (Posteriors)",
+    subtitle = "Latent traits: φ (Optimism), θ (Environmentalism), ψ (Radical-Reform)",
     x        = "Intercept Value",
     y        = "Region"
   ) +
@@ -481,42 +489,6 @@ region_plot_dist <- ggplot(
 ggsave(
   filename = "qoi_outputs/plots/region_group_effects_distributions.png",
   plot     = region_plot_dist,
-  width    = 10,
-  height   = 12,
-  dpi      = 300
-)
-
-# 7g.ii. Party-level distribution plots (half-eye; unchanged)
-party_plot_dist <- ggplot(
-  party_draws_long,
-  aes(
-    x = value,
-    y = fct_rev(party_name),
-    fill = latent,
-    colour = latent
-  )
-) +
-  stat_halfeye(
-    position   = position_nudge(y = 0.2),
-    slab_alpha = 0.6,
-    slab_size  = 0.5,
-    adjust     = 0.8
-  ) +
-  facet_wrap(~ latent, scales = "free_x", ncol = 1) +
-  theme_minimal() +
-  labs(
-    title    = "Party-Level Intercepts: Posterior Distributions",
-    subtitle = "Latent traits: φ (Optimism), θ (Environment), ψ (Radical-Reform)",
-    x        = "Intercept Value",
-    y        = "Party"
-  ) +
-  theme(
-    legend.position = "none"
-  )
-
-ggsave(
-  filename = "qoi_outputs/plots/party_group_effects_distributions.png",
-  plot     = party_plot_dist,
   width    = 10,
   height   = 12,
   dpi      = 300
@@ -568,6 +540,22 @@ print(resid_corr_df)
 # ---------------------------------------------------------------------------------------
 # 8e. Posterior Density Plots of Latent Correlations (unchanged, already densities)
 # ---------------------------------------------------------------------------------------
+
+# ——————————————
+# Build corr_long from R_eta_list
+corr_long <- map_dfr(R_eta_list, function(Le) {
+  tibble(
+    `φ–θ` = Le[1, 2],
+    `φ–ψ` = Le[1, 3],
+    `θ–ψ` = Le[2, 3]
+  )
+}) %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "pair",
+    values_to = "corr"
+  )
+# ——————————————
 
 # 1. Compute point estimates (posterior means) for each pair:
 point_estimates <- corr_long %>%
@@ -788,9 +776,11 @@ lambda_dist_plot <- ggplot(
     position      = position_nudge(y = 0.2),
     slab_alpha    = 0.6,
     slab_size     = 0.5,
-    adjust        = 0.8,
+    adjust        = 0.8
   ) +
   facet_wrap(~ latent, scales = "free_x", ncol = 1) +
+  # drop unused item levels in each panel:
+  scale_y_discrete(drop = TRUE) +
   theme_minimal() +
   labs(
     title    = "Item Discrimination (λ): Posterior Distributions",
@@ -805,15 +795,14 @@ lambda_dist_plot <- ggplot(
 ggsave(
   filename = "qoi_outputs/plots/item_discrimination_lambda_distributions.png",
   plot     = lambda_dist_plot,
-  width    = 8,
-  height   = 10,
+  width    = 12,   # wider so three panels fit nicely
+  height   = 4,
   dpi      = 300
 )
 
 # ---------------------------------------------------------------------------------------
 # 10. Visualization: Region-Level Portraits (distributions reflected in error bars removed)
 # ---------------------------------------------------------------------------------------
-
 # 10a. 3D Scatterplot of (φ, θ, ψ) for regions (posterior means) — unchanged
 region_plot_df <- region_intercepts_df %>%
   select(region_name, phi_alpha, theta_alpha, psi_alpha)
@@ -839,16 +828,17 @@ p_psi_phi_col_env <- ggplot(region_plot_df, aes(
   scale_color_gradient(
     low   = "grey80",
     high  = "darkgreen",
-    name  = "Standardised θ\n(Environment)"
+    name  = " Environmentalism (θ)"
   ) +
   scale_size_continuous(
     range = c(3, 12),
-    name  = "Respondents\n(n_obs)"
+    name  = "# of Respondents"
   ) +
   labs(
-    title = "Regions: ψ (Radical-Reform) vs φ (Optimism), colored by θ (Environment)",
-    x     = "Standardised ψ (intercept)",
-    y     = "Standardised φ (intercept)"
+    title = "Regional profiles in attitude space",
+    subtitle = "Radical-Reform (ψ) vs Optimism (φ), coloured by Environmentalism (θ)",
+    x     = "Radical-Reform ψ (intercept)",
+    y     = "Optimism φ (intercept)"
   ) +
   theme_minimal(base_size = 13)
 
@@ -872,16 +862,17 @@ p_theta_phi_col_rad <- ggplot(region_plot_df, aes(
   scale_color_gradient(
     low   = "grey80",
     high  = "red",
-    name  = "Standardised ψ\n(Radical-Reform)"
+    name  = "Radical-Reform (ψ)"
   ) +
   scale_size_continuous(
     range = c(3, 12),
-    name  = "Respondents\n(n_obs)"
+    name  = "Respondents\n(# of obs)"
   ) +
   labs(
-    title = "Regions: θ (Environment) vs φ (Optimism), colored by ψ (Radical-Reform)",
-    x     = "Standardised θ (intercept)",
-    y     = "Standardised φ (intercept)"
+    title = "Regional profiles in attitude space",
+    subtitle = "Environmentalism (θ) vs Optimism (φ), coloured by Radical-Reform (ψ)",
+    x     = "Environmentalism θ (intercept)",
+    y     = "Optimism φ (intercept)"
   ) +
   theme_minimal(base_size = 13)
 
@@ -905,16 +896,17 @@ p_psi_theta_col_opt <- ggplot(region_plot_df, aes(
   scale_color_gradient(
     low   = "grey80",
     high  = "blue",
-    name  = "Standardised φ\n(Optimism)"
+    name  = "Optimism (φ)"
   ) +
   scale_size_continuous(
     range = c(3, 12),
     name  = "Respondents\n(n_obs)"
   ) +
   labs(
-    title = "Regions: ψ (Radical-Reform) vs θ (Environment), colored by φ (Optimism)",
-    x     = "Standardised ψ (intercept)",
-    y     = "Standardised θ (intercept)"
+    title = "Regional profiles in attitude space",
+    subtitle = "Radical-Reform (ψ) vs Environmentalism (θ), coloured by Optimism (φ)",
+    x     = "Radical-Reform ψ (intercept)",
+    y     = "Environmentalism θ (intercept)"
   ) +
   theme_minimal(base_size = 13)
 
@@ -926,7 +918,7 @@ ggsave(
   dpi      = 300
 )
 
-# 3D scatter, sizing by actual number of respondents (n_obs) — unchanged
+# 3D scatter, sizing by actual number of respondents (n_obs) 
 fig_3d <- plot_ly(
   data   = region_plot_df,
   x      = ~phi_alpha,
@@ -943,10 +935,10 @@ fig_3d <- plot_ly(
   )
 ) %>%
   layout(
-    title = "3D Region Portraits: Standardised φ vs θ vs ψ",
+    title = "3D Region Portraits: φ vs θ vs ψ",
     scene = list(
       xaxis = list(title = "Standardised φ (Optimism)"),
-      yaxis = list(title = "Standardised θ (Environment)"),
+      yaxis = list(title = "Standardised θ (Environmentalism)"),
       zaxis = list(title = "Standardised ψ (Radical-Reform)")
     )
   )
@@ -1447,3 +1439,4 @@ cat("Quantities of Interest & Visualizations Generated Successfully.\n")
 cat("Covariate-effects plot now uses overlapping ridgelines (with Script 1’s original colors).\n")
 cat("Browse the “qoi_outputs/” folder for CSV summaries and “qoi_outputs/plots/” for figures.\n")
 cat("=========================================\n\n")
+
